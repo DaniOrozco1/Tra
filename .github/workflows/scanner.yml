@@ -2,7 +2,7 @@ name: Escaner HA 1h
 
 on:
   schedule:
-    - cron: "3 * * * *"        # cada hora, al minuto 3 (hora UTC); el script filtra 8:00-00:00 Madrid
+    - cron: "17 * * * *"        # cada hora, al minuto 3 (hora UTC); el script filtra 8:00-00:00 Madrid
   workflow_dispatch:
     inputs:
       prueba:
