@@ -1,13 +1,3 @@
-"""
-Escáner Heikin Ashi 1h -> aviso por Telegram.
-
-Condiciones (resumen):
-  1. Cambio de color en la vela Heikin Ashi (rojo->verde = compra, verde->rojo = venta).
-  2. El cuerpo de la última vela de la tendencia anterior estaba dentro de la zona MA20-MA60.
-  3. Estocástico (14,1,3) < 60 en compras, > 40 en ventas.
-  4. La MA60 sube (compras) o baja (ventas) entre 0,5 y 1,1 "cuadrados" en las últimas 12 velas.
-  5. Si cumple todo, avisa con entrada, stop, objetivo y unidades para arriesgar 5 EUR.
-"""
 import os
 import sys
 import time
