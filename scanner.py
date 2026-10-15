@@ -1,3 +1,13 @@
+"""
+Escáner Heikin Ashi 1h -> aviso por Telegram.
+
+Condiciones (resumen):
+  1. Cambio de color en la vela Heikin Ashi (rojo->verde = compra, verde->rojo = venta).
+  2. El cuerpo de la última vela de la tendencia anterior estaba dentro de la zona MA20-MA60.
+  3. Estocástico (14,1,3) < 60 en compras, > 40 en ventas.
+  4. La MA60 sube (compras) o baja (ventas) entre 0,5 y 1,1 "cuadrados" en las últimas 12 velas.
+  5. Si cumple todo, avisa con entrada, stop, objetivo y unidades para arriesgar 5 EUR.
+"""
 import os
 import sys
 import time
@@ -12,6 +22,7 @@ import yfinance as yf
 # ============================ CONFIGURACIÓN ============================
 TZ = ZoneInfo("Europe/Madrid")
 HORAS_AVISO = set(range(8, 24)) | {0}      # de 8:00 a 00:00 (hora de Madrid)
+SEND_EMPTY = True                          # True: mensaje cada hora aunque no haya señales
 
 MA_FAST, MA_SLOW = 20, 60
 
@@ -294,24 +305,26 @@ def main():
     total = len(ASSETS)
     print(f"Analizados: {total - len(failed) - closed}, cerrados: {closed}, fallos: {len(failed)}, señales: {len(signals)}")
 
+    analizados = total - len(failed) - closed
+    hora = (signals[0][1]["close_time"] if signals else now_local).strftime("%H:00")
+
     if signals:
-        hora = signals[0][1]["close_time"].strftime("%H:%M")
         msg = f"🔔 Señales 1h · cierre {hora} (Madrid)\n\n"
         msg += "\n\n".join(format_signal(n, r) for n, r in signals)
-        send_telegram(msg)
+    else:
+        msg = f"📭 Sin señales · cierre {hora} (Madrid)\n0 de {analizados} activos cumplen las condiciones."
 
-    # Mensaje diario de "sigo funcionando" a las 8:00, o resumen si es una prueba
-    if force or now_local.hour == 8:
-        txt = (f"✅ Sistema activo · {total - len(failed) - closed} activos analizados, "
-               f"{closed} con mercado cerrado, {len(failed)} sin datos.")
-        if failed:
-            txt += "\nSin datos: " + ", ".join(failed[:20])
-        if force:
-            txt = "🧪 PRUEBA\n" + txt + f"\nSeñales ahora mismo: {len(signals)}"
-        send_telegram(txt)
-    elif len(failed) > 0.4 * total:
-        send_telegram(f"⚠️ Aviso: {len(failed)} de {total} activos sin datos esta hora. "
-                      "Puede ser un fallo temporal de la fuente de datos.")
+    # Pie con el estado del sistema (así sabes que sigue funcionando)
+    msg += f"\n\n— {analizados} analizados · {closed} con mercado cerrado · {len(failed)} sin datos"
+    if failed:
+        msg += "\nSin datos: " + ", ".join(failed[:10])
+    if len(failed) > 0.4 * total:
+        msg = "⚠️ Muchos activos sin datos esta hora (posible fallo de la fuente)\n\n" + msg
+    if force:
+        msg = "🧪 PRUEBA\n" + msg
+
+    if signals or SEND_EMPTY or force:
+        send_telegram(msg)
 
 
 if __name__ == "__main__":
