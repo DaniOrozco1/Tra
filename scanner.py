@@ -16,10 +16,7 @@ MA_FAST, MA_SLOW = 20, 60
 VELA_MIN = 3                            # minutos por vela
 MODO_VELA = "CIERRE"                    # "CIERRE": basta con que el cierre esté dentro de la zona
                                         # "CUERPO": el cuerpo entero dentro de la zona
-TREND_BARS = 5                          # nº de velas seguidas (5 x 3 min = 15 min) en las que
-                                        # ambas medias deben ir en la misma dirección
-MIN_SLOPE_PCT = 0.0                     # opcional: variación mínima (en %) de cada media en esas
-                                        # velas. 0 = desactivado. Ej.: 0.02 en forex, 0.1 en cripto
+TREND_BARS = 5                          # una media "sube" si vale más que hace 5 velas (15 min)
 MAX_EDAD_MIN = 30                       # ignora activos con datos más viejos (mercado cerrado)
 
 # ============================== ACTIVOS ================================
@@ -133,22 +130,15 @@ def analyze(v, now):
     if not dentro:
         return None
 
-    # 2) MA20 y MA60 con la misma tendencia en CADA una de las últimas TREND_BARS velas
-    d20 = ma20.diff().iloc[-TREND_BARS:]
-    d60 = ma60.diff().iloc[-TREND_BARS:]
-    if (d20 > 0).all() and (d60 > 0).all():
+    # 2) MA20 y MA60 con la misma tendencia
+    d20 = ma20.iloc[i] - ma20.iloc[i - TREND_BARS]
+    d60 = ma60.iloc[i] - ma60.iloc[i - TREND_BARS]
+    if d20 > 0 and d60 > 0:
         tendencia = "ALCISTA"
-    elif (d20 < 0).all() and (d60 < 0).all():
+    elif d20 < 0 and d60 < 0:
         tendencia = "BAJISTA"
     else:
         return None
-
-    # 3) (opcional) pendiente mínima de cada media en esas velas
-    if MIN_SLOPE_PCT > 0:
-        for ma in (ma20, ma60):
-            var_pct = abs(ma.iloc[i] - ma.iloc[i - TREND_BARS]) / ma.iloc[i - TREND_BARS] * 100
-            if var_pct < MIN_SLOPE_PCT:
-                return None
 
     cierre_vela = (v.index[-1] + pd.Timedelta(minutes=VELA_MIN)).tz_convert(TZ)
     return {"close": float(c), "ma20": float(ma20.iloc[i]),
