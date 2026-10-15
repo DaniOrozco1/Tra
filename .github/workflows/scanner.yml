@@ -2,8 +2,8 @@ name: Alertas
 
 on:
   schedule:
-    - cron: "15 5-22 * * *"   # minuto 15 de cada hora (UTC); cubre 8:15-23:15 Madrid en verano e invierno
-  workflow_dispatch:           # botón de ejecución manual
+    - cron: "15 5-22 * * *"   # se lanza de más (UTC); el filtro de abajo deja pasar solo 8-23 hora de Madrid
+  workflow_dispatch:           # botón manual: siempre se ejecuta
 
 env:
   SCRIPT: scanner.py         # <-- pon aquí el nombre de tu script
@@ -17,18 +17,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Comprobar horario (Madrid)
+        id: horario
+        run: |
+          H=$((10#$(TZ=Europe/Madrid date +%H)))
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ] && { [ "$H" -lt 8 ] || [ "$H" -gt 23 ]; }; then
+            echo "Fuera de horario (son las $H h en Madrid), no se ejecuta."
+            echo "ejecutar=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ejecutar=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.horario.outputs.ejecutar == 'true'
 
       - uses: actions/setup-python@v5
+        if: steps.horario.outputs.ejecutar == 'true'
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Instalar dependencias
+        if: steps.horario.outputs.ejecutar == 'true'
         run: |
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Ejecutar script
+        if: steps.horario.outputs.ejecutar == 'true'
         run: python "$SCRIPT"
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
