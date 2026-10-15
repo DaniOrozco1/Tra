@@ -30,12 +30,14 @@ STOCH_LINE = "K"             # "K" (línea rápida) o "D" (línea suavizada)
 STOCH_BUY_BELOW = 60
 STOCH_SELL_ABOVE = 40
 
-# Pendiente de la MA60 medida en "cuadrados" (base = 12 velas, base = 1,6 x altura)
+# Pendiente de la MA60 medida en "cuadrados" por cada 12 velas (12h en gráfico de 1h)
 SLOPE_BARS = 12
 SLOPE_MIN, SLOPE_MAX = 0.5, 1.1
-SQUARE_RATIO = 1.6
-VISIBLE_BARS = 120           # velas que se ven en tu gráfico (para el zoom vertical)
-PLOT_ASPECT = 2.0            # ancho / alto de la zona del gráfico
+SLOPE_MODE = "ATR"           # "ATR": el cuadrado se mide en ATRs (se adapta a cada activo)
+                             # "PCT": el cuadrado es un % fijo del precio (como tu script de Pine)
+ATR_LEN = 14
+SQUARE_ATR = 1.5             # modo ATR: 1 cuadrado = 1,5 ATR de 1h  (HAY QUE CALIBRARLO)
+SQUARE_PCT = 1.0             # modo PCT: 1 cuadrado = 1 % de subida     (HAY QUE CALIBRARLO)
 
 RISK_EUR = 5.0               # lo máximo que puedes perder por operación
 RR_NORMAL = 2.0              # ganar 2 veces lo arriesgado
@@ -131,10 +133,17 @@ def stochastic(h, l, c):
     return k if STOCH_LINE == "K" else d
 
 
+def atr_series(df):
+    """ATR de Wilder (igual que ta.atr de TradingView), sobre precios reales."""
+    pc = df.Close.shift(1)
+    tr = pd.concat([df.High - df.Low, (df.High - pc).abs(), (df.Low - pc).abs()], axis=1).max(axis=1)
+    return tr.ewm(alpha=1 / ATR_LEN, adjust=False).mean()
+
+
 # ============================== ANÁLISIS ===============================
 def analyze(df, to_eur):
     """Devuelve un dict con la operación si la última vela cerrada cumple todo, o None."""
-    if len(df) < max(150, VISIBLE_BARS + 5):
+    if len(df) < 150:
         return None
 
     ha = heikin_ashi(df)
@@ -176,13 +185,13 @@ def analyze(df, to_eur):
     if side == "SELL" and not s > STOCH_SELL_ABOVE:
         return None
 
-    # 4) pendiente de la MA60 en "cuadrados"
-    win = ind.iloc[-VISIBLE_BARS:]
-    price_range = win.h.max() - win.l.min()
-    if price_range <= 0:
-        return None
-    square_h = price_range * (SLOPE_BARS / VISIBLE_BARS) * PLOT_ASPECT / SQUARE_RATIO
-    slope = (ma60.iloc[i] - ma60.iloc[i - SLOPE_BARS]) / square_h
+    # 4) pendiente de la MA60 en "cuadrados" (cambio de la MA60 en las últimas 12 velas)
+    ma_now, ma_prev = ma60.iloc[i], ma60.iloc[i - SLOPE_BARS]
+    if SLOPE_MODE == "PCT":
+        slope = ((ma_now - ma_prev) / ma_prev * 100) / SQUARE_PCT
+    else:
+        atr = atr_series(df).iloc[i]
+        slope = (ma_now - ma_prev) / (atr * SQUARE_ATR) if atr > 0 else np.nan
     if np.isnan(slope):
         return None
     if side == "BUY" and not (SLOPE_MIN <= slope <= SLOPE_MAX):
