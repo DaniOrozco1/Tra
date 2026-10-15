@@ -1,3 +1,11 @@
+"""
+Escáner Heikin Ashi 3m -> aviso por Telegram.
+
+Condiciones:
+  1. El cierre de la última vela Heikin Ashi de 3 minutos (ya cerrada) está dentro de la zona MA20-MA60.
+  2. La MA20 y la MA60 han mantenido la misma tendencia en cada una de las últimas 5 velas
+     (15 min): ambas subiendo o ambas bajando.
+"""
 import os
 import time
 from zoneinfo import ZoneInfo
@@ -14,8 +22,12 @@ SEND_EMPTY = False                      # True: mensaje en cada ejecución aunqu
 
 MA_FAST, MA_SLOW = 20, 60
 VELA_MIN = 3                            # minutos por vela
-MODO_VELA = "CIERRE"                    # "CUERPO": el cuerpo entero dentro de la zona
-                                        # "CIERRE": basta con que el cierre esté dentro
+MODO_VELA = "CIERRE"                    # "CIERRE": basta con que el cierre esté dentro de la zona
+                                        # "CUERPO": el cuerpo entero dentro de la zona
+TREND_BARS = 5                          # nº de velas seguidas (5 x 3 min = 15 min) en las que
+                                        # ambas medias deben ir en la misma dirección
+MIN_SLOPE_PCT = 0.0                     # opcional: variación mínima (en %) de cada media en esas
+                                        # velas. 0 = desactivado. Ej.: 0.02 en forex, 0.1 en cripto
 MAX_EDAD_MIN = 30                       # ignora activos con datos más viejos (mercado cerrado)
 
 # ============================== ACTIVOS ================================
@@ -118,6 +130,7 @@ def analyze(v, now):
     if np.isnan(lo) or np.isnan(hi):
         return None
 
+    # 1) vela dentro de la zona MA20-MA60
     c = ha.c.iloc[i]
     if MODO_VELA == "CUERPO":
         body_lo = min(ha.o.iloc[i], c)
@@ -128,9 +141,27 @@ def analyze(v, now):
     if not dentro:
         return None
 
+    # 2) MA20 y MA60 con la misma tendencia en CADA una de las últimas TREND_BARS velas
+    d20 = ma20.diff().iloc[-TREND_BARS:]
+    d60 = ma60.diff().iloc[-TREND_BARS:]
+    if (d20 > 0).all() and (d60 > 0).all():
+        tendencia = "ALCISTA"
+    elif (d20 < 0).all() and (d60 < 0).all():
+        tendencia = "BAJISTA"
+    else:
+        return None
+
+    # 3) (opcional) pendiente mínima de cada media en esas velas
+    if MIN_SLOPE_PCT > 0:
+        for ma in (ma20, ma60):
+            var_pct = abs(ma.iloc[i] - ma.iloc[i - TREND_BARS]) / ma.iloc[i - TREND_BARS] * 100
+            if var_pct < MIN_SLOPE_PCT:
+                return None
+
     cierre_vela = (v.index[-1] + pd.Timedelta(minutes=VELA_MIN)).tz_convert(TZ)
     return {"close": float(c), "ma20": float(ma20.iloc[i]),
-            "ma60": float(ma60.iloc[i]), "hora": cierre_vela}
+            "ma60": float(ma60.iloc[i]), "hora": cierre_vela,
+            "tendencia": tendencia}
 
 
 def fmt(x):
@@ -155,8 +186,9 @@ def main():
             r = analyze(to_3m(df, now), now)
             if r:
                 avisos.append(
-                    f"{name}: HA {fmt(r['close'])} dentro de MA20 ({fmt(r['ma20'])}) "
-                    f"y MA60 ({fmt(r['ma60'])}) - vela cerrada {r['hora']:%H:%M}"
+                    f"{name} ({r['tendencia']}): HA {fmt(r['close'])} dentro de "
+                    f"MA20 ({fmt(r['ma20'])}) y MA60 ({fmt(r['ma60'])}) "
+                    f"- vela cerrada {r['hora']:%H:%M}"
                 )
         except Exception as e:
             print(f"Error con {name}: {e}")
