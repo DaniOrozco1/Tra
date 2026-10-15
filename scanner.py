@@ -1,11 +1,3 @@
-"""
-Escáner Heikin Ashi 3m -> aviso por Telegram.
-
-Condiciones:
-  1. El cierre de la última vela Heikin Ashi de 3 minutos (ya cerrada) está dentro de la zona MA20-MA60.
-  2. La MA20 y la MA60 han mantenido la misma tendencia en cada una de las últimas 5 velas
-     (15 min): ambas subiendo o ambas bajando.
-"""
 import os
 import time
 from zoneinfo import ZoneInfo
