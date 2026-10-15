@@ -1,28 +1,35 @@
-name: Escaner HA 1h
+name: Alertas
 
 on:
   schedule:
-    - cron: "17 * * * *"        # cada hora, al minuto 3 (hora UTC); el script filtra 8:00-00:00 Madrid
-  workflow_dispatch:
-    inputs:
-      prueba:
-        description: "Modo prueba (ignora el horario y manda un resumen a Telegram)"
-        type: boolean
-        default: true
+    - cron: "15 5-22 * * *"   # minuto 15 de cada hora (UTC); cubre 8:15-23:15 Madrid en verano e invierno
+  workflow_dispatch:           # botón de ejecución manual
+
+env:
+  SCRIPT: scanner.py         # <-- pon aquí el nombre de tu script
+
+concurrency:
+  group: alertas
+  cancel-in-progress: false
 
 jobs:
-  scan:
+  run:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt
-      - run: python scanner.py
+
+      - name: Instalar dependencias
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Ejecutar script
+        run: python "$SCRIPT"
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          FORCE: ${{ inputs.prueba && '1' || '0' }}
